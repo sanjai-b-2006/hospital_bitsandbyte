@@ -15,14 +15,8 @@ import HospitalAuth from './pages/hospital/HospitalAuth';
 import DoctorLayout from './pages/doctor/DoctorLayout';
 import DoctorLogin from './pages/doctor/DoctorLogin';
 import { 
-  Building2, 
-  Stethoscope, 
   Pill, 
-  FlaskConical, 
-  CheckCircle2, 
-  ShieldCheck,
-  Layers,
-  ArrowRight
+  CheckCircle2
 } from 'lucide-react';
 
 function AppContent() {
@@ -48,7 +42,7 @@ function AppContent() {
       );
     }
     return (
-      <DoctorLayout onSwitchPortal={(portal) => setPortalMode(portal || 'patient')} />
+      <DoctorLayout />
     );
   }
 
@@ -60,7 +54,7 @@ function AppContent() {
       );
     }
     return (
-      <HospitalLayout onSwitchPortal={(portal) => setPortalMode(portal || 'patient')} />
+      <HospitalLayout />
     );
   }
 
@@ -143,46 +137,6 @@ function AppContent() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.75rem', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => setPortalMode('hospital')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '4px 10px',
-                background: '#ecfdf5',
-                color: '#059669',
-                border: '1px solid #a7f3d0',
-                borderRadius: '6px',
-                fontWeight: 700,
-                fontSize: '0.74rem',
-                cursor: 'pointer'
-              }}
-            >
-              <Building2 size={13} />
-              <span>Hospital Admin →</span>
-            </button>
-
-            <button
-              onClick={() => setPortalMode('doctor')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '4px 10px',
-                background: '#ccfbf1',
-                color: '#0f766e',
-                border: '1px solid #99f6e4',
-                borderRadius: '6px',
-                fontWeight: 700,
-                fontSize: '0.74rem',
-                cursor: 'pointer'
-              }}
-            >
-              <Stethoscope size={13} />
-              <span>Phase 3: Doctor Portal Live →</span>
-            </button>
-
             <a
               href="http://localhost:5174"
               target="_blank"

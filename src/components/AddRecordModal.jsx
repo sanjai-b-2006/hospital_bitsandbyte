@@ -10,15 +10,11 @@ import {
   Plus, 
   Trash2,
   Scan,
-  ShieldCheck,
-  ShieldAlert
+  ShieldCheck
 } from 'lucide-react';
-import MarkdownView from './MarkdownView';
-import { API_BASE_URL } from '../config';
 
 export default function AddRecordModal({ onClose, defaultMode = 'manual' }) {
-  const { addRecord, simulateOCRProcess, activeProfileId, patient } = useHealth();
-  const profileId = activeProfileId || patient?.id || 'PAT-IND-884210';
+  const { addRecord, simulateOCRProcess } = useHealth();
   const [mode, setMode] = useState(defaultMode); // 'manual' or 'ocr'
 
   // Form State
@@ -145,55 +141,6 @@ export default function AddRecordModal({ onClose, defaultMode = 'manual' }) {
     });
 
     onClose();
-  };
-
-  // AI Drug–Allergy / Interaction Safety Check
-  const [safetyLoading, setSafetyLoading] = useState(false);
-  const [safetyResult, setSafetyResult] = useState('');
-  const [safetyError, setSafetyError] = useState('');
-
-  const checkMedicationSafety = async () => {
-    if (safetyLoading) return;
-
-    const filteredMeds = medications.filter(m => m.name.trim() !== '');
-    if (filteredMeds.length === 0) {
-      setSafetyError('Add at least one medication to check (or the AI will review your current meds only).');
-      setSafetyResult('');
-      return;
-    }
-
-    setSafetyLoading(true);
-    setSafetyResult('');
-    setSafetyError('');
-
-    try {
-      const res = await fetch(`${API_BASE_URL}/ai/check-medications`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          patientId: profileId,
-          newMedications: filteredMeds.map((m) => ({ name: m.name, dosage: m.dosage, frequency: m.frequency })),
-        }),
-      });
-
-      const text = await res.text();
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (parseErr) {
-        throw new Error(`Server answered with non-JSON (HTTP ${res.status}).`);
-      }
-
-      if (data.success) {
-        setSafetyResult(data.content);
-      } else {
-        setSafetyError(data.error || 'Safety check failed.');
-      }
-    } catch (err) {
-      setSafetyError(err.message);
-    } finally {
-      setSafetyLoading(false);
-    }
   };
 
   return (
@@ -636,57 +583,6 @@ export default function AddRecordModal({ onClose, defaultMode = 'manual' }) {
                 <label htmlFor="emergency-check" style={{ fontSize: '0.825rem', color: '#9f1239', cursor: 'pointer', fontWeight: 600 }}>
                   Show this record prominently on my Emergency Break-Glass Profile
                 </label>
-              </div>
-
-              {/* AI Medication Safety Check */}
-              <div style={{
-                margin: '16px 0',
-                padding: '14px',
-                background: '#eef2ff',
-                borderRadius: '10px',
-                border: '1px solid #c7d2fe'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-                  <div style={{ fontSize: '0.825rem', color: '#3730a3', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <ShieldAlert size={16} />
-                    <span>AI Drug–Allergy & Interaction Check</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={checkMedicationSafety}
-                    disabled={safetyLoading}
-                    style={{
-                      padding: '6px 12px',
-                      borderRadius: '8px',
-                      border: 'none',
-                      background: safetyLoading ? '#c7d2fe' : '#4f46e5',
-                      color: 'white',
-                      fontSize: '0.78rem',
-                      fontWeight: 700,
-                      cursor: safetyLoading ? 'not-allowed' : 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px'
-                    }}
-                  >
-                    <Sparkles size={14} />
-                    {safetyLoading ? 'Checking…' : 'Run Safety Check'}
-                  </button>
-                </div>
-
-                {safetyResult && (
-                  <div style={{ marginTop: '12px', padding: '12px', background: 'white', borderRadius: '8px', fontSize: '0.8rem', maxHeight: '300px', overflowY: 'auto' }}>
-                    <MarkdownView content={safetyResult} />
-                  </div>
-                )}
-                {safetyError && (
-                  <div style={{ marginTop: '10px', padding: '10px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '0.78rem', color: '#b91c1c' }}>
-                    ⚠️ {safetyError}
-                  </div>
-                )}
-                <div style={{ marginTop: '8px', fontSize: '0.7rem', color: '#6366f1', opacity: 0.8 }}>
-                  Checks the medications above against your allergies and current prescriptions.
-                </div>
               </div>
 
               {/* Modal Actions */}

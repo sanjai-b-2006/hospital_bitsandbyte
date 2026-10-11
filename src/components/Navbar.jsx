@@ -505,53 +505,59 @@ export default function Navbar({ activeTab, setActiveTab, onSwitchPortal }) {
               </div>
             )}
 
-            {/* Switch to Hospital Admin Portal Button */}
-            <button
-              onClick={() => onSwitchPortal && onSwitchPortal('hospital')}
-              className="btn btn-sm"
-              style={{
-                background: '#ecfdf5',
-                color: '#047857',
-                border: '1px solid #a7f3d0',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontWeight: 700,
-                fontSize: '0.78rem',
-                padding: '7px 12px',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                marginLeft: '4px'
-              }}
-              title="Switch to Hospital Admin Dashboard"
-            >
-              <Building2 size={15} />
-              <span>Hospital Admin</span>
-            </button>
+            {/* Portal switcher: only available when logged OUT (login/register screens) —
+                while logged in, you must sign out before switching portals */}
+            {!isAuthenticated && (
+              <>
+                {/* Switch to Hospital Admin Portal Button */}
+                <button
+                  onClick={() => onSwitchPortal && onSwitchPortal('hospital')}
+                  className="btn btn-sm"
+                  style={{
+                    background: '#ecfdf5',
+                    color: '#047857',
+                    border: '1px solid #a7f3d0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: 700,
+                    fontSize: '0.78rem',
+                    padding: '7px 12px',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    marginLeft: '4px'
+                  }}
+                  title="Switch to Hospital Admin Dashboard"
+                >
+                  <Building2 size={15} />
+                  <span>Hospital Admin</span>
+                </button>
 
-            {/* Switch to Doctor Clinical Portal Button */}
-            <button
-              onClick={() => onSwitchPortal && onSwitchPortal('doctor')}
-              className="btn btn-sm"
-              style={{
-                background: '#ccfbf1',
-                color: '#0f766e',
-                border: '1px solid #99f6e4',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontWeight: 700,
-                fontSize: '0.78rem',
-                padding: '7px 12px',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                marginLeft: '4px'
-              }}
-              title="Switch to Doctor Clinical Dashboard"
-            >
-              <Stethoscope size={15} />
-              <span>Doctor Portal</span>
-            </button>
+                {/* Switch to Doctor Clinical Portal Button */}
+                <button
+                  onClick={() => onSwitchPortal && onSwitchPortal('doctor')}
+                  className="btn btn-sm"
+                  style={{
+                    background: '#ccfbf1',
+                    color: '#0f766e',
+                    border: '1px solid #99f6e4',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: 700,
+                    fontSize: '0.78rem',
+                    padding: '7px 12px',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    marginLeft: '4px'
+                  }}
+                  title="Switch to Doctor Clinical Dashboard"
+                >
+                  <Stethoscope size={15} />
+                  <span>Doctor Portal</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
 

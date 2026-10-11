@@ -18,7 +18,7 @@ import ManageDoctors from './ManageDoctors';
 import HospitalHistory from './HospitalHistory';
 import HospitalEmergency from './HospitalEmergency';
 
-export default function HospitalLayout({ onSwitchPortal }) {
+export default function HospitalLayout() {
   const { hospital, logoutHospital, queue } = useHospital();
   const [activeTab, setActiveTab] = useState('queue'); // 'queue', 'patients', 'doctors', 'history', 'emergency'
 
@@ -193,26 +193,8 @@ export default function HospitalLayout({ onSwitchPortal }) {
             </nav>
           </div>
 
-          {/* Right Action: Switch Portal & Logout */}
+          {/* Right Action: Logout only (portal switching requires sign out) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <button
-              onClick={() => onSwitchPortal('patient')}
-              className="btn btn-secondary btn-sm"
-              style={{ fontSize: '0.78rem' }}
-              title="Switch to Patient Portal"
-            >
-              <span>Patient Portal</span>
-            </button>
-
-            <button
-              onClick={() => onSwitchPortal('doctor')}
-              className="btn btn-secondary btn-sm"
-              style={{ fontSize: '0.78rem' }}
-              title="Switch to Doctor Portal"
-            >
-              <span>Doctor Portal</span>
-            </button>
-
             <button
               onClick={logoutHospital}
               className="btn btn-danger btn-sm"
