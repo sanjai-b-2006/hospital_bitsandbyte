@@ -1340,6 +1340,76 @@ app.post('/api/lab/submit', async (req, res) => {
   }
 });
 
+// ==========================================
+// AI CLINICAL ASSISTANT (OpenRouter LLM)
+// ==========================================
+
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const OPENROUTER_MODEL =
+  process.env.OPENROUTER_MODEL || 'nvidia/nemotron-3-ultra-550b-a55b:free';
+
+// Chat with the OpenRouter LLM (MedAssist AI) — helps uncover hard-to-find causes
+app.post('/api/chat', async (req, res) => {
+  if (!OPENROUTER_API_KEY) {
+    return res.status(500).json({
+      success: false,
+      error: 'OPENROUTER_API_KEY is not configured on the server. Add it to your .env or Vercel env vars.',
+    });
+  }
+
+  const { messages, reasoning } = req.body;
+  if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ success: false, error: 'Messages array is required.' });
+  }
+
+  const systemPrompt = {
+    role: 'system',
+    content:
+      'You are MedAssist AI, a clinical decision-support assistant inside OneRecord, a unified healthcare platform. ' +
+      'You help doctors, hospital staff, and patients interpret symptoms and uncover rare or hard-to-find causes of medical presentations. ' +
+      'Provide structured, evidence-informed differential diagnoses, red-flag warnings, and sensible next-step investigations. ' +
+      'Keep answers concise and organized with bullet points. ' +
+      'Always end with a short disclaimer that your suggestions require clinical confirmation and are not a substitute for professional medical diagnosis.',
+  };
+
+  try {
+    const openrouterRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: OPENROUTER_MODEL,
+        messages: [systemPrompt, ...messages],
+        reasoning: reasoning || { enabled: true },
+      }),
+    });
+
+    const data = await openrouterRes.json();
+
+    if (!openrouterRes.ok) {
+      console.error('[OpenRouter] API error:', data);
+      return res.status(502).json({
+        success: false,
+        error: data?.error?.message || 'OpenRouter request failed.',
+      });
+    }
+
+    const message = data?.choices?.[0]?.message;
+    res.json({
+      success: true,
+      model: data?.model || OPENROUTER_MODEL,
+      content: message?.content || '',
+      // Preserve reasoning_details so the frontend can pass it back for continued reasoning
+      reasoningDetails: message?.reasoning_details || null,
+    });
+  } catch (err) {
+    console.error('[OpenRouter] Exception:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Launch Server
 
 

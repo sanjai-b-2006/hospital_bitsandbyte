@@ -3,6 +3,7 @@ import { HealthProvider, useHealth } from './context/HealthContext';
 import { HospitalProvider, useHospital } from './context/HospitalContext';
 import { DoctorProvider, useDoctor } from './context/DoctorContext';
 import Navbar from './components/Navbar';
+import ChatBot from './components/ChatBot';
 import PatientHome from './pages/patient/PatientHome';
 import PatientRecords from './pages/patient/PatientRecords';
 import ManageAccess from './pages/patient/ManageAccess';
@@ -216,6 +217,7 @@ export default function App() {
       <HospitalProvider>
         <DoctorProvider>
           <AppContent />
+          <ChatBot />
         </DoctorProvider>
       </HospitalProvider>
     </HealthProvider>
