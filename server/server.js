@@ -1359,19 +1359,104 @@ app.post('/api/chat', async (req, res) => {
     });
   }
 
-  const { messages, reasoning } = req.body;
+  const { messages, reasoning, patientId } = req.body;
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ success: false, error: 'Messages array is required.' });
   }
 
+  // ---------------------------------------------------------------------
+  // 1) Pull the patient's real OneRecord vault data from PostgreSQL and
+  //    inject it so the LLM can answer with actual personal context.
+  // ---------------------------------------------------------------------
+  let vaultContext =
+    'PATIENT HEALTH VAULT CONTEXT: No profile selected. Answer generally and ask the user to share details if needed.';
+
+  if (patientId) {
+    try {
+      const pRes = await query(
+        `SELECT id, name, age, gender, blood_group, allergies, critical_conditions, emergency_contacts, organ_donor
+         FROM patients WHERE id = $1`,
+        [patientId]
+      );
+      const depRes = await query(
+        `SELECT id, name, relation, age, blood_group, allergies, critical_conditions, guardian_id
+         FROM dependents WHERE id = $1`,
+        [patientId]
+      );
+      const dRes = await query(
+        `SELECT name, relation, age, blood_group, allergies, critical_conditions
+         FROM dependents WHERE guardian_id = $1`,
+        [patientId]
+      );
+      const medsRes = await query(
+        `SELECT name, dosage, frequency, purpose, risk_level
+         FROM active_medications
+         WHERE patient_id = $1 OR dependent_id = $1
+         ORDER BY created_at DESC LIMIT 20`,
+        [patientId]
+      );
+      const recRes = await query(
+        `SELECT title, type, date, doctor, hospital, diagnosis, risk
+         FROM medical_records
+         WHERE patient_id = $1 OR dependent_id = $1
+         ORDER BY date DESC LIMIT 20`,
+        [patientId]
+      );
+
+      const fmt = (arr, fn) => (arr && arr.length ? arr.map(fn).join('\n') : '(none recorded)');
+
+      // The viewed profile may be the patient themself OR a dependent (family member)
+      const profile = pRes.rows[0] || depRes.rows[0];
+      if (profile) {
+        const isDependent = !!depRes.rows[0];
+        const info = `${profile.name} — Age ${profile.age}, ${profile.gender}, Blood ${profile.blood_group || '?'}${profile.organ_donor ? ', Organ Donor: Yes' : ''}${
+          isDependent ? ` (family member: ${profile.relation})` : ''
+        }`;
+        // For a dependent, include the guardian's basic info so the AI has the full family picture
+        const guardianInfo = isDependent
+          ? `\nGuardian: ${profile.guardian_id || 'unknown'}`
+          : '';
+        vaultContext = [
+          'PATIENT HEALTH VAULT CONTEXT (live from OneRecord PostgreSQL):',
+          `Profile: ${info}${guardianInfo}`,
+          `Allergies: ${fmt(profile.allergies, (a) => (typeof a === 'object' ? `${a.allergen} (${a.severity})` : String(a)))}`,
+          `Active conditions: ${fmt(profile.critical_conditions, (c) => String(c))}`,
+          `Active medications: ${fmt(
+            medsRes.rows,
+            (m) => `- ${m.name} | ${m.dosage || '?'} | ${m.frequency || '?'} | ${m.purpose || ''} | risk: ${m.risk_level}`
+          )}`,
+          `Recent medical records: ${fmt(
+            recRes.rows,
+            (r) =>
+              `- [${r.date}] ${r.title} (${r.type}) at ${r.hospital || '—'}${r.doctor ? ` by ${r.doctor}` : ''} — ${r.diagnosis || ''} risk:${r.risk}`
+          )}`,
+          `Family members: ${fmt(dRes.rows, (d) => `- ${d.name} (${d.relation}, ${d.age}, ${d.blood_group || '?'})`)}`,
+        ].join('\n');
+      } else {
+        vaultContext =
+          'PATIENT HEALTH VAULT CONTEXT: Patient profile not found for the given id. Be honest about which data is missing.';
+      }
+    } catch (err) {
+      console.warn('[OpenRouter] Could not load patient context:', err.message);
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // 2) Build the assistant system prompt, including the vault context
+  // ---------------------------------------------------------------------
   const systemPrompt = {
     role: 'system',
     content:
       'You are MedAssist AI, a clinical decision-support assistant inside OneRecord, a unified healthcare platform. ' +
       'You help doctors, hospital staff, and patients interpret symptoms and uncover rare or hard-to-find causes of medical presentations. ' +
-      'Provide structured, evidence-informed differential diagnoses, red-flag warnings, and sensible next-step investigations. ' +
-      'Keep answers concise and organized with bullet points. ' +
-      'Always end with a short disclaimer that your suggestions require clinical confirmation and are not a substitute for professional medical diagnosis.',
+      'Every request includes a "PATIENT HEALTH VAULT CONTEXT" section with live patient data from OneRecord PostgreSQL. ' +
+      'USE THIS CONTEXT ACTIVELY: personalize your answers by referencing the patient\u2019s real medications, allergies, conditions, recent records, and family profile. ' +
+      'NEVER say "I don\u2019t have access to your records" — the data is already provided above. If a section says "none recorded" or something is missing, say exactly what is missing instead. ' +
+      'Format answers in clean, scannable sections with bullet points; bold key terms; keep it concise. ' +
+      'Provide structured, evidence-informed differentials, red-flag warnings, and sensible next-step investigations where relevant. ' +
+      'Always end with a one-line disclaimer that your suggestions require clinical confirmation and are not a substitute for professional medical diagnosis.' +
+      '\n\n' +
+      vaultContext,
   };
 
   try {

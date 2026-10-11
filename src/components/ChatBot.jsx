@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, X, Send, Sparkles, Loader2, ShieldAlert } from 'lucide-react';
 import { API_BASE_URL } from '../config';
+import { useHealth } from '../context/HealthContext';
 
 const WELCOME = {
   role: 'assistant',
   content:
     "Hi! I'm MedAssist AI \u{1F5FE}\n\nI help uncover possible — often rare — causes of a medical presentation. " +
-    'Describe the patient\u2019s symptoms, history, vitals, or lab results and I\u2019ll offer structured differentials, red-flag warnings, and next-step investigations.',
+    'I can also read the health records you have linked in OneRecord, so describe the patient\u2019s symptoms, history, vitals, or lab results and I\u2019ll offer structured differentials, red-flag warnings, and next-step investigations.',
 };
 
 export default function ChatBot() {
@@ -15,6 +16,10 @@ export default function ChatBot() {
   const [messages, setMessages] = useState([WELCOME]);
   const [typing, setTyping] = useState(false);
   const scrollRef = useRef(null);
+
+  // The active profile (self or the family member currently being viewed)
+  const { activeProfileId, patient } = useHealth();
+  const currentProfileId = activeProfileId || patient?.id || 'PAT-IND-884210';
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -44,7 +49,7 @@ export default function ChatBot() {
       const res = await fetch(`${API_BASE_URL}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: payload }),
+        body: JSON.stringify({ messages: payload, patientId: currentProfileId }),
       });
 
       // Handle non-JSON responses (e.g. Vercel timeout/crash returns HTML) gracefully
