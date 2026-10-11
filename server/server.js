@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { initDatabase, query } from './db.js';
 
 dotenv.config();
@@ -1410,15 +1412,52 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-// Launch Server
+// ==========================================
+// Launch (local) / Export (Vercel serverless)
+// ==========================================
 
+let dbReady = null;
 
-initDatabase()
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`[PostgreSQL Server] Express API running on http://localhost:${PORT}`);
+// Run schema + seed once (memoized) so it works on serverless cold starts too
+function ensureDbInitialized() {
+  if (!dbReady) {
+    dbReady = initDatabase().catch((err) => {
+      dbReady = null; // allow retry on the next request
+      throw err;
     });
-  })
-  .catch((err) => {
+  }
+  return dbReady;
+}
+
+// Make sure the DB is ready before handling any API request.
+// Vercel cold-starts a new function instance sometimes, so we can't rely on
+// a one-time boot sequence like a normal long-running server.
+app.use(async (req, res, next) => {
+  try {
+    await ensureDbInitialized();
+    next();
+  } catch (err) {
     console.error('[PostgreSQL Server] Failed to initialize database:', err);
-  });
+    res.status(500).json({ error: 'Database initialization failed: ' + err.message });
+  }
+});
+
+// Local development: listen on PORT only when executed directly (npm run server).
+// When Vercel imports this file as a module, we skip listening and just export the app.
+const isDirectRun =
+  process.argv[1] &&
+  path.resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase();
+
+if (isDirectRun) {
+  ensureDbInitialized()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`[PostgreSQL Server] Express API running on http://localhost:${PORT}`);
+      });
+    })
+    .catch((err) => {
+      console.error('[PostgreSQL Server] Failed to initialize database:', err);
+    });
+}
+
+export default app;

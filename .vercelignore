@@ -1,0 +1,2 @@
+# Local PGlite database files — never upload to Vercel
+server/postgres_data
