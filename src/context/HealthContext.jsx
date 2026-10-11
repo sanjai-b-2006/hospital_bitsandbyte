@@ -5,6 +5,8 @@ import { localDb } from '../services/localDb';
 
 const API_URL = API_BASE_URL;
 
+export const HealthContext = createContext(null);
+
 export const HealthProvider = ({ children }) => {
   const [patient, setPatient] = useState(() => localDb.findPatientById('PAT-IND-884210'));
   const [dependents, setDependents] = useState(() => localDb.getDependents('PAT-IND-884210'));

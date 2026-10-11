@@ -5,6 +5,8 @@ import { localDb } from '../services/localDb';
 
 const API_URL = API_BASE_URL;
 
+export const DoctorContext = createContext(null);
+
 const SAMPLE_DOCTOR = {
   id: 'DOC-101',
   name: 'Dr. Rajesh Kulkarni',

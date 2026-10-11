@@ -5,6 +5,8 @@ import { localDb } from '../services/localDb';
 
 const API_URL = API_BASE_URL;
 
+export const HospitalContext = createContext(null);
+
 const SAMPLE_HOSPITAL = {
   id: 'HOSP-KA-BLR-0042',
   name: 'Manipal Hospital, Old Airport Road',
