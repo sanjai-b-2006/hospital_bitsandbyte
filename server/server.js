@@ -1483,45 +1483,6 @@ app.post('/api/ai/check-medications', async (req, res) => {
 });
 
 // ==========================================
-// AI FEATURE 3: Doctor Pre-Visit Brief
-// POST /api/ai/pre-visit-brief
-// Body: { patientId } — condenses the full chart into a 1-page consult brief
-// ==========================================
-app.post('/api/ai/pre-visit-brief', async (req, res) => {
-  if (!hasAIConfigured()) {
-    return res.status(500).json({ success: false, error: 'OPENROUTER_API_KEY is not configured on the server.' });
-  }
-
-  const { patientId } = req.body;
-  if (!patientId) {
-    return res.status(400).json({ success: false, error: 'patientId is required.' });
-  }
-
-  const vaultContext = await getPatientVaultContext(patientId);
-
-  const system = [
-    'You are MedAssist AI preparing a PRE-VISIT BRIEF for a doctor in the OneRecord platform.',
-    'Using ONLY the PATIENT HEALTH VAULT CONTEXT below, produce a concise, professional, 1-page Markdown brief with these sections:',
-    '1. **Patient snapshot** — name, age, gender, blood group, organ donor (if relevant).',
-    '2. **Active problems** — chronic/active conditions, one line each.',
-    '3. **Active medications** — Markdown table: Medication | Dose | Frequency | Indication.',
-    '4. **Allergies** — list all; mark severe ones (🚫/🔴).',
-    '5. **Recent records timeline** — Markdown table: Date | Title | Hospital | Diagnosis | Risk (newest first, max 10).',
-    '6. **Red flags & consult focus** — 3–5 bullets on what the doctor should focus on this visit.',
-    'Be scannable and data-driven. Do NOT invent anything not in the context. Do NOT append a disclaimer.',
-    vaultContext,
-  ].join('\n');
-
-  try {
-    const out = await askAI({ system, messages: [{ role: 'user', content: 'Generate the pre-visit brief.' }] });
-    res.json({ success: true, model: out.model, content: out.content });
-  } catch (err) {
-    console.error('[AI] pre-visit-brief error:', err);
-    res.status(err.status || 500).json({ success: false, error: err.message });
-  }
-});
-
-// ==========================================
 // Launch (local) / Export (Vercel serverless)
 // ==========================================
 

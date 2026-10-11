@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
 import { useDoctor } from '../../context/DoctorContext';
-import MarkdownView from '../../components/MarkdownView';
-import { API_BASE_URL } from '../../config';
 import { 
   Ticket, 
   User, 
@@ -18,9 +16,7 @@ import {
   ChevronRight,
   ExternalLink,
   Calendar,
-  AlertCircle,
-  Sparkles,
-  X
+  AlertCircle
 } from 'lucide-react';
 
 export default function DoctorHome({ onNavigateToPatient }) {
@@ -41,47 +37,6 @@ export default function DoctorHome({ onNavigateToPatient }) {
   const [newNotes, setNewNotes] = useState('');
   const [newRisk, setNewRisk] = useState('GREEN');
   const [submittingNote, setSubmittingNote] = useState(false);
-
-  // AI Pre-Visit Brief state
-  const [showBrief, setShowBrief] = useState(false);
-  const [briefLoading, setBriefLoading] = useState(false);
-  const [briefResult, setBriefResult] = useState('');
-  const [briefError, setBriefError] = useState('');
-
-  const generatePreVisitBrief = async () => {
-    if (!activeToken?.patientId || briefLoading) return;
-
-    setBriefLoading(true);
-    setBriefResult('');
-    setBriefError('');
-    setShowBrief(true);
-
-    try {
-      const res = await fetch(`${API_BASE_URL}/ai/pre-visit-brief`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ patientId: activeToken.patientId }),
-      });
-
-      const text = await res.text();
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (parseErr) {
-        throw new Error(`Server answered with non-JSON (HTTP ${res.status}).`);
-      }
-
-      if (data.success) {
-        setBriefResult(data.content);
-      } else {
-        setBriefError(data.error || 'Brief generation failed.');
-      }
-    } catch (err) {
-      setBriefError(err.message);
-    } finally {
-      setBriefLoading(false);
-    }
-  };
 
   const waitingTokens = queue.filter(t => t.status === 'Waiting');
   const inProgressTokens = queue.filter(t => t.status === 'In Consultation');
@@ -348,16 +303,6 @@ export default function DoctorHome({ onNavigateToPatient }) {
                   </button>
 
                   <button
-                    onClick={() => generatePreVisitBrief()}
-                    disabled={briefLoading}
-                    className="btn btn-secondary btn-sm"
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px', borderColor: '#a5b4fc', color: '#4338ca', background: '#eef2ff' }}
-                  >
-                    <Sparkles size={14} />
-                    <span>{briefLoading ? 'Generating brief…' : 'AI Pre-Visit Brief'}</span>
-                  </button>
-
-                  <button
                     onClick={() => onNavigateToPatient && onNavigateToPatient(activeToken.patientId)}
                     className="btn btn-secondary btn-sm"
                     style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
@@ -572,70 +517,6 @@ export default function DoctorHome({ onNavigateToPatient }) {
           </>
         )}
       </div>
-
-      {/* AI Pre-Visit Brief Modal */}
-      {showBrief && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(15, 23, 42, 0.6)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '20px',
-          zIndex: 110
-        }}>
-          <div style={{
-            background: 'white',
-            borderRadius: '20px',
-            maxWidth: '760px',
-            width: '100%',
-            maxHeight: '85vh',
-            padding: '24px 28px',
-            boxShadow: 'var(--shadow-xl)',
-            overflowY: 'auto'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-              <div>
-                <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Sparkles size={20} color="#4338ca" />
-                  AI Pre-Visit Brief
-                </h3>
-                <p style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                  {activeToken?.patientName} · Token {activeToken?.tokenNumber} · {activeToken?.patientId}
-                </p>
-              </div>
-              <button
-                onClick={() => setShowBrief(false)}
-                className="btn btn-sm btn-secondary"
-                style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
-              >
-                <X size={15} /> Close
-              </button>
-            </div>
-
-            {briefLoading && (
-              <div style={{ textAlign: 'center', padding: '40px 0', color: '#64748b', fontSize: '0.85rem' }}>
-                <Sparkles size={28} className="spin" style={{ margin: '0 auto 10px', color: '#4f46e5' }} />
-                Compiling the patient's chart into a consult brief…
-              </div>
-            )}
-
-            {briefResult && !briefLoading && (
-              <div style={{ fontSize: '0.88rem', color: '#0f172a' }}>
-                <MarkdownView content={briefResult} />
-              </div>
-            )}
-
-            {briefError && !briefLoading && (
-              <div style={{ padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', fontSize: '0.82rem', color: '#b91c1c' }}>
-                ⚠️ {briefError}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Add Consultation Note Modal */}
       {showAddNoteModal && (
