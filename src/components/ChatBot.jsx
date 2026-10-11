@@ -46,7 +46,15 @@ export default function ChatBot() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: payload }),
       });
-      const data = await res.json();
+
+      // Handle non-JSON responses (e.g. Vercel timeout/crash returns HTML) gracefully
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (parseErr) {
+        throw new Error(`Server answered with non-JSON (HTTP ${res.status}) — possible function timeout`);
+      }
 
       if (data.success) {
         setMessages((prev) => [
@@ -64,9 +72,13 @@ export default function ChatBot() {
         ]);
       }
     } catch (err) {
+      // Show the exact URL + real error so deployment issues are obvious
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: `⚠️ ${err.message}. Is the server running on port 5001?` },
+        {
+          role: 'assistant',
+          content: `⚠️ Could not reach ${API_BASE_URL}/chat (${err.message}). If the URL shows localhost:5001, VITE_API_URL is not set/baked into the build on Vercel.`,
+        },
       ]);
     } finally {
       setTyping(false);
