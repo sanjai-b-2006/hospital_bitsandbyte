@@ -207,6 +207,7 @@ function AppContent() {
           </div>
         </div>
       </footer>
+      <ChatBot />
     </div>
   );
 }
@@ -217,7 +218,6 @@ export default function App() {
       <HospitalProvider>
         <DoctorProvider>
           <AppContent />
-          <ChatBot />
         </DoctorProvider>
       </HospitalProvider>
     </HealthProvider>

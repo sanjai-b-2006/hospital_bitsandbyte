@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { initDatabase, query } from './db.js';
+import { askAI, getPatientVaultContext, hasAIConfigured } from './ai.js';
 
 dotenv.config();
 
@@ -1344,18 +1345,15 @@ app.post('/api/lab/submit', async (req, res) => {
 
 // ==========================================
 // AI CLINICAL ASSISTANT (OpenRouter LLM)
+// Shared helpers live in server/ai.js.
 // ==========================================
-
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-const OPENROUTER_MODEL =
-  process.env.OPENROUTER_MODEL || 'nvidia/nemotron-3-ultra-550b-a55b:free';
 
 // Chat with the OpenRouter LLM (MedAssist AI) — helps uncover hard-to-find causes
 app.post('/api/chat', async (req, res) => {
-  if (!OPENROUTER_API_KEY) {
+  if (!hasAIConfigured()) {
     return res.status(500).json({
       success: false,
-      error: 'OPENROUTER_API_KEY is not configured on the server. Add it to your .env or Vercel env vars.',
+      error: 'OPENROUTER_API_KEY is not configured on the server. Add it to your .env or server env vars.',
     });
   }
 
@@ -1364,86 +1362,8 @@ app.post('/api/chat', async (req, res) => {
     return res.status(400).json({ success: false, error: 'Messages array is required.' });
   }
 
-  // ---------------------------------------------------------------------
-  // 1) Pull the patient's real OneRecord vault data from PostgreSQL and
-  //    inject it so the LLM can answer with actual personal context.
-  // ---------------------------------------------------------------------
-  let vaultContext =
-    'PATIENT HEALTH VAULT CONTEXT: No profile selected. Answer generally and ask the user to share details if needed.';
+  const vaultContext = await getPatientVaultContext(patientId);
 
-  if (patientId) {
-    try {
-      const pRes = await query(
-        `SELECT id, name, age, gender, blood_group, allergies, critical_conditions, emergency_contacts, organ_donor
-         FROM patients WHERE id = $1`,
-        [patientId]
-      );
-      const depRes = await query(
-        `SELECT id, name, relation, age, blood_group, allergies, critical_conditions, guardian_id
-         FROM dependents WHERE id = $1`,
-        [patientId]
-      );
-      const dRes = await query(
-        `SELECT name, relation, age, blood_group, allergies, critical_conditions
-         FROM dependents WHERE guardian_id = $1`,
-        [patientId]
-      );
-      const medsRes = await query(
-        `SELECT name, dosage, frequency, purpose, risk_level
-         FROM active_medications
-         WHERE patient_id = $1 OR dependent_id = $1
-         ORDER BY created_at DESC LIMIT 20`,
-        [patientId]
-      );
-      const recRes = await query(
-        `SELECT title, type, date, doctor, hospital, diagnosis, risk
-         FROM medical_records
-         WHERE patient_id = $1 OR dependent_id = $1
-         ORDER BY date DESC LIMIT 20`,
-        [patientId]
-      );
-
-      const fmt = (arr, fn) => (arr && arr.length ? arr.map(fn).join('\n') : '(none recorded)');
-
-      // The viewed profile may be the patient themself OR a dependent (family member)
-      const profile = pRes.rows[0] || depRes.rows[0];
-      if (profile) {
-        const isDependent = !!depRes.rows[0];
-        const info = `${profile.name} — Age ${profile.age}, ${profile.gender}, Blood ${profile.blood_group || '?'}${profile.organ_donor ? ', Organ Donor: Yes' : ''}${
-          isDependent ? ` (family member: ${profile.relation})` : ''
-        }`;
-        // For a dependent, include the guardian's basic info so the AI has the full family picture
-        const guardianInfo = isDependent
-          ? `\nGuardian: ${profile.guardian_id || 'unknown'}`
-          : '';
-        vaultContext = [
-          'PATIENT HEALTH VAULT CONTEXT (live from OneRecord PostgreSQL):',
-          `Profile: ${info}${guardianInfo}`,
-          `Allergies: ${fmt(profile.allergies, (a) => (typeof a === 'object' ? `${a.allergen} (${a.severity})` : String(a)))}`,
-          `Active conditions: ${fmt(profile.critical_conditions, (c) => String(c))}`,
-          `Active medications: ${fmt(
-            medsRes.rows,
-            (m) => `- ${m.name} | ${m.dosage || '?'} | ${m.frequency || '?'} | ${m.purpose || ''} | risk: ${m.risk_level}`
-          )}`,
-          `Recent medical records: ${fmt(
-            recRes.rows,
-            (r) =>
-              `- [${r.date}] ${r.title} (${r.type}) at ${r.hospital || '—'}${r.doctor ? ` by ${r.doctor}` : ''} — ${r.diagnosis || ''} risk:${r.risk}`
-          )}`,
-          `Family members: ${fmt(dRes.rows, (d) => `- ${d.name} (${d.relation}, ${d.age}, ${d.blood_group || '?'})`)}`,
-        ].join('\n');
-      } else {
-        vaultContext =
-          'PATIENT HEALTH VAULT CONTEXT: Patient profile not found for the given id. Be honest about which data is missing.';
-      }
-    } catch (err) {
-      console.warn('[OpenRouter] Could not load patient context:', err.message);
-    }
-  }
-
-  // ---------------------------------------------------------------------
-  // 2) Build the assistant system prompt, including the vault context
-  // ---------------------------------------------------------------------
   const systemPrompt = {
     role: 'system',
     content:
@@ -1459,40 +1379,145 @@ app.post('/api/chat', async (req, res) => {
   };
 
   try {
-    const openrouterRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: OPENROUTER_MODEL,
-        messages: [systemPrompt, ...messages],
-        reasoning: reasoning || { enabled: true },
-      }),
+    const out = await askAI({
+      system: systemPrompt.content,
+      messages,
+      reasoning: reasoning || { enabled: true },
     });
 
-    const data = await openrouterRes.json();
-
-    if (!openrouterRes.ok) {
-      console.error('[OpenRouter] API error:', data);
-      return res.status(502).json({
-        success: false,
-        error: data?.error?.message || 'OpenRouter request failed.',
-      });
-    }
-
-    const message = data?.choices?.[0]?.message;
     res.json({
       success: true,
-      model: data?.model || OPENROUTER_MODEL,
-      content: message?.content || '',
+      model: out.model,
+      content: out.content,
       // Preserve reasoning_details so the frontend can pass it back for continued reasoning
-      reasoningDetails: message?.reasoning_details || null,
+      reasoningDetails: out.reasoningDetails,
     });
   } catch (err) {
     console.error('[OpenRouter] Exception:', err);
-    res.status(500).json({ success: false, error: err.message });
+    const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 502;
+    res.status(status).json({ success: false, error: err.message });
+  }
+});
+
+// ==========================================
+// AI FEATURE 1: Lab / Report Explainer
+// POST /api/ai/explain-report
+// Body: { patientId?, reportTitle?, reportText } — plain-language report breakdown
+// ==========================================
+app.post('/api/ai/explain-report', async (req, res) => {
+  if (!hasAIConfigured()) {
+    return res.status(500).json({ success: false, error: 'OPENROUTER_API_KEY is not configured on the server.' });
+  }
+
+  const { patientId, reportTitle, reportText } = req.body;
+  if (!reportText || !String(reportText).trim()) {
+    return res.status(400).json({ success: false, error: 'reportText is required.' });
+  }
+
+  const vaultContext = await getPatientVaultContext(patientId);
+  const system = [
+    'You are MedAssist AI, a clinical decision-support assistant inside OneRecord.',
+    'Explain the medical report below in plain, patient-friendly language.',
+    'Your answer MUST be Markdown with these sections:',
+    '1. **Summary** — 2–4 clear sentences on what this report shows.',
+    '2. **Key results table** — a Markdown table with columns: Parameter | Value | Reference | Status. In the Status column write ✅ Normal for in-range values and ⚠️ Abnormally High or ⚠️ Abnormally Low for out-of-range values, with a short interpretation.',
+    '3. **What to do next** — 3–5 concise bullet points.',
+    'If anything is urgent (critical/panic values, severe anaemia, infection markers very high, cardiac markers, etc.) start with a prominent ⚠️ **URGENT** warning before anything else.',
+    'Only explain what is in the report. Do NOT invent values. Do NOT append a disclaimer (the app shows one).',
+    `Report title: ${reportTitle || 'Medical report'}`,
+    'Report content:',
+    '```',
+    String(reportText).slice(0, 8000),
+    '```',
+    vaultContext,
+  ].join('\n');
+
+  try {
+    const out = await askAI({ system, messages: [{ role: 'user', content: 'Explain this report clearly.' }] });
+    res.json({ success: true, model: out.model, content: out.content });
+  } catch (err) {
+    console.error('[AI] explain-report error:', err);
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+});
+
+// ==========================================
+// AI FEATURE 2: Drug–Allergy / Interaction Safety Checker
+// POST /api/ai/check-medications
+// Body: { patientId?, newMedications?: [{name,dosage,frequency}] }
+// Reviews the patient's allergies + current meds (and any new meds) for conflicts.
+// ==========================================
+app.post('/api/ai/check-medications', async (req, res) => {
+  if (!hasAIConfigured()) {
+    return res.status(500).json({ success: false, error: 'OPENROUTER_API_KEY is not configured on the server.' });
+  }
+
+  const { patientId, newMedications } = req.body;
+  const vaultContext = await getPatientVaultContext(patientId);
+
+  const extraMeds = Array.isArray(newMedications) && newMedications.length
+    ? '\n\nNEW MEDICATIONS BEING CONSIDERED (check these against the patient):\n' +
+      newMedications.map((m) => `- ${m.name || '?'} | ${m.dosage || ''} | ${m.frequency || ''}`).join('\n')
+    : '';
+
+  const system = [
+    'You are MedAssist AI, a clinical pharmacist inside OneRecord.',
+    'Using ONLY the PATIENT HEALTH VAULT CONTEXT below, run a medication safety review for this patient.',
+    'Your answer MUST be Markdown:',
+    '1. **Safety table** — a Markdown table with columns: Medication | Allergy Check | Interaction Check | Verdict. Verdict column is one of: ✅ Safe, ⚠️ Caution, 🚫 Contraindicated.',
+    '2. **Key warnings** — 1–3 bullet points for anything flagged 🚫 or ⚠️, explaining why in simple terms.',
+    'Check every medication against the patient\u2019s listed allergies (especially severe ones like anaphylaxis risk) and against the other medications they are taking (e.g. blood thinners, ARBs, metformin).',
+    'If the list is empty, say so instead of inventing medications.',
+    'Do NOT append a disclaimer. Do NOT invent allergies or conditions not in the context.',
+    vaultContext,
+    extraMeds,
+  ].join('\n');
+
+  try {
+    const out = await askAI({ system, messages: [{ role: 'user', content: 'Check these medications for safety.' }] });
+    res.json({ success: true, model: out.model, content: out.content });
+  } catch (err) {
+    console.error('[AI] check-medications error:', err);
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+});
+
+// ==========================================
+// AI FEATURE 3: Doctor Pre-Visit Brief
+// POST /api/ai/pre-visit-brief
+// Body: { patientId } — condenses the full chart into a 1-page consult brief
+// ==========================================
+app.post('/api/ai/pre-visit-brief', async (req, res) => {
+  if (!hasAIConfigured()) {
+    return res.status(500).json({ success: false, error: 'OPENROUTER_API_KEY is not configured on the server.' });
+  }
+
+  const { patientId } = req.body;
+  if (!patientId) {
+    return res.status(400).json({ success: false, error: 'patientId is required.' });
+  }
+
+  const vaultContext = await getPatientVaultContext(patientId);
+
+  const system = [
+    'You are MedAssist AI preparing a PRE-VISIT BRIEF for a doctor in the OneRecord platform.',
+    'Using ONLY the PATIENT HEALTH VAULT CONTEXT below, produce a concise, professional, 1-page Markdown brief with these sections:',
+    '1. **Patient snapshot** — name, age, gender, blood group, organ donor (if relevant).',
+    '2. **Active problems** — chronic/active conditions, one line each.',
+    '3. **Active medications** — Markdown table: Medication | Dose | Frequency | Indication.',
+    '4. **Allergies** — list all; mark severe ones (🚫/🔴).',
+    '5. **Recent records timeline** — Markdown table: Date | Title | Hospital | Diagnosis | Risk (newest first, max 10).',
+    '6. **Red flags & consult focus** — 3–5 bullets on what the doctor should focus on this visit.',
+    'Be scannable and data-driven. Do NOT invent anything not in the context. Do NOT append a disclaimer.',
+    vaultContext,
+  ].join('\n');
+
+  try {
+    const out = await askAI({ system, messages: [{ role: 'user', content: 'Generate the pre-visit brief.' }] });
+    res.json({ success: true, model: out.model, content: out.content });
+  } catch (err) {
+    console.error('[AI] pre-visit-brief error:', err);
+    res.status(err.status || 500).json({ success: false, error: err.message });
   }
 });
 

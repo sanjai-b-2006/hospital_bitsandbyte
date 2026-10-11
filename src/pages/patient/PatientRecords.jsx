@@ -17,12 +17,16 @@ import {
   X,
   Scan,
   Download,
-  AlertCircle
+  AlertCircle,
+  Sparkles
 } from 'lucide-react';
 import AddRecordModal from '../../components/AddRecordModal';
+import MarkdownView from '../../components/MarkdownView';
+import { API_BASE_URL } from '../../config';
 
 export default function PatientRecords() {
-  const { records, toggleEmergencyRecord } = useHealth();
+  const { records, toggleEmergencyRecord, activeProfileId, patient } = useHealth();
+  const profileId = activeProfileId || patient?.id || 'PAT-IND-884210';
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTypeFilter, setSelectedTypeFilter] = useState('ALL');
   const [selectedRiskFilter, setSelectedRiskFilter] = useState('ALL');
@@ -30,6 +34,58 @@ export default function PatientRecords() {
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(null); // 'YYYY-MM-DD'
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedRecordDetail, setSelectedRecordDetail] = useState(null);
+
+  // AI Report Explainer state
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState('');
+  const [aiError, setAiError] = useState('');
+
+  const explainRecordWithAI = async () => {
+    const rec = selectedRecordDetail;
+    if (!rec || aiLoading) return;
+
+    setAiLoading(true);
+    setAiResult('');
+    setAiError('');
+
+    try {
+      const parts = [];
+      if (rec.title) parts.push(`Title: ${rec.title}`);
+      if (rec.type) parts.push(`Type: ${rec.type}`);
+      if (rec.date) parts.push(`Date: ${rec.date}`);
+      if (rec.hospital) parts.push(`Hospital: ${rec.hospital}`);
+      if (rec.doctor) parts.push(`Doctor: ${rec.doctor}`);
+      if (rec.diagnosis) parts.push(`Diagnosis: ${rec.diagnosis}`);
+      if (rec.risk && rec.riskReason) parts.push(`Clinical assessment (${rec.risk} risk): ${rec.riskReason}`);
+      if (rec.medications?.length) parts.push('Medications: ' + rec.medications.map((m) => `${m.name} ${m.dosage} ${m.frequency}`).join(', '));
+      if (rec.labResults?.length) parts.push('Lab results: ' + rec.labResults.map((t) => `${t.test}: ${t.result} (${t.status || 'Normal'})`).join(', '));
+      if (rec.notes) parts.push(`Notes: ${rec.notes}`);
+
+      const res = await fetch(`${API_BASE_URL}/ai/explain-report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patientId: profileId, reportTitle: rec.title, reportText: parts.join('\n') }),
+      });
+
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (parseErr) {
+        throw new Error(`Server answered with non-JSON (HTTP ${res.status}).`);
+      }
+
+      if (data.success) {
+        setAiResult(data.content);
+      } else {
+        setAiError(data.error || 'AI explainer failed.');
+      }
+    } catch (err) {
+      setAiError(err.message);
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   // Calendar month state
   const [currentCalendarMonth, setCurrentCalendarMonth] = useState(() => {
@@ -698,7 +754,41 @@ export default function PatientRecords() {
               </div>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+            {/* AI Report Explainer result */}
+            {aiResult && (
+              <div style={{
+                marginTop: '16px',
+                padding: '14px 16px',
+                background: '#f0f9ff',
+                borderRadius: '10px',
+                border: '1px solid #bae6fd',
+                fontSize: '0.85rem',
+                color: '#0f172a',
+                maxHeight: '320px',
+                overflowY: 'auto'
+              }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Sparkles size={14} /> AI Report Explainer
+                </div>
+                <MarkdownView content={aiResult} />
+              </div>
+            )}
+            {aiError && (
+              <div style={{ marginTop: '14px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '0.8rem', color: '#b91c1c' }}>
+                ⚠️ {aiError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px', flexWrap: 'wrap' }}>
+              <button
+                onClick={explainRecordWithAI}
+                disabled={aiLoading}
+                className="btn btn-secondary btn-sm"
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', borderColor: '#a5b4fc', color: '#4338ca', background: '#eef2ff' }}
+              >
+                <Sparkles size={14} />
+                <span>{aiLoading ? 'Explaining…' : 'Explain with AI'}</span>
+              </button>
               <button
                 onClick={() => {
                   toggleEmergencyRecord(selectedRecordDetail.id);
