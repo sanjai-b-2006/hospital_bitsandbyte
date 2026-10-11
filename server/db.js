@@ -16,7 +16,13 @@ const DATABASE_URL = process.env.DATABASE_URL;
 export async function initDatabase() {
   if (DATABASE_URL) {
     console.log('[PostgreSQL] Connecting to Cloud PostgreSQL via DATABASE_URL...');
-    pgPool = new pg.Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } });
+    // family: 4 forces IPv4 — avoids ENETUNREACH when DNS returns an
+    // unreachable IPv6 address (common on Render/Supabase).
+    pgPool = new pg.Pool({
+      connectionString: DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+      family: 4,
+    });
   } else {
     const dataDir = path.join(__dirname, 'postgres_data');
     console.log(`[PostgreSQL] Initializing persistent Postgres database at: ${dataDir}`);
