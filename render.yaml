@@ -1,0 +1,17 @@
+# Render blueprint for the OneRecord backend (Express + PostgreSQL API)
+# Import this repo in Render and it auto-creates the web service.
+services:
+  - type: web
+    name: onerecord-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm run server
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false # set in Render dashboard (your Supabase URL)
+      - key: OPENROUTER_API_KEY
+        sync: false # set in Render dashboard (your sk-or-v1 key)
+      - key: OPENROUTER_MODEL
+        value: nvidia/nemotron-3-ultra-550b-a55b:free
