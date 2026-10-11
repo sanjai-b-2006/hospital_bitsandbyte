@@ -6,6 +6,7 @@ import Navbar from './components/Navbar';
 import ChatBot from './components/ChatBot';
 import PatientHome from './pages/patient/PatientHome';
 import PatientRecords from './pages/patient/PatientRecords';
+import PatientHealthTrends from './pages/patient/PatientHealthTrends';
 import ManageAccess from './pages/patient/ManageAccess';
 import EmergencyProfile from './pages/patient/EmergencyProfile';
 import Login from './pages/auth/Login';
@@ -97,6 +98,7 @@ function AppContent() {
       <main className="main-content">
         {activeTab === 'home' && <PatientHome onNavigate={(tab) => setActiveTab(tab)} />}
         {activeTab === 'records' && <PatientRecords />}
+        {activeTab === 'trends' && <PatientHealthTrends />}
         {activeTab === 'access' && <ManageAccess />}
         {activeTab === 'emergency' && <EmergencyProfile />}
       </main>

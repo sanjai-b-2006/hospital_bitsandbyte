@@ -5,6 +5,13 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { initDatabase, query } from './db.js';
 import { askAI, getPatientVaultContext, hasAIConfigured } from './ai.js';
+import {
+  getHospitalAnalytics,
+  getVisitsByRange,
+  getPatientTrends,
+  computeRiskScore,
+  predictWaitTime,
+} from './analytics.js';
 
 dotenv.config();
 
@@ -736,13 +743,29 @@ app.post('/api/hospital/queue/add', async (req, res) => {
   }
 });
 
-// Update Queue Token Status
+// Update Queue Token Status (records consult start/complete timestamps for the wait-time model)
 app.put('/api/hospital/queue/:tokenId/status', async (req, res) => {
   const { tokenId } = req.params;
   const { status } = req.body;
 
   try {
-    await query('UPDATE patient_tokens SET status = $1 WHERE id = $2', [status, tokenId]);
+    if (status === 'In Consultation') {
+      await query(
+        `UPDATE patient_tokens
+            SET status = $1, started_at = COALESCE(started_at, CURRENT_TIMESTAMP)
+          WHERE id = $2`,
+        [status, tokenId]
+      );
+    } else if (status === 'Completed') {
+      await query(
+        `UPDATE patient_tokens
+            SET status = $1, completed_at = COALESCE(completed_at, CURRENT_TIMESTAMP)
+          WHERE id = $2`,
+        [status, tokenId]
+      );
+    } else {
+      await query('UPDATE patient_tokens SET status = $1 WHERE id = $2', [status, tokenId]);
+    }
     res.json({ success: true, status });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1396,6 +1419,85 @@ app.post('/api/chat', async (req, res) => {
     console.error('[OpenRouter] Exception:', err);
     const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 502;
     res.status(status).json({ success: false, error: err.message });
+  }
+});
+
+// ==========================================
+// ANALYTICS — hospital ops dashboard
+// ==========================================
+
+// Live ops metrics for the hospital portal (KPIs, peak hours, dept load, risk mix, 14-day trend)
+app.get('/api/analytics/hospital/:id', async (req, res) => {
+  try {
+    const data = await getHospitalAnalytics(req.params.id);
+    res.json({ success: true, ...data });
+  } catch (err) {
+    console.error('[analytics] error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Patient visit counts by range: ?range=daily|monthly|yearly
+app.get('/api/analytics/hospital/:id/visits', async (req, res) => {
+  try {
+    const range = req.query.range || 'daily';
+    if (!['daily', 'monthly', 'yearly'].includes(range)) {
+      return res.status(400).json({ success: false, error: 'range must be daily, monthly or yearly.' });
+    }
+    const data = await getVisitsByRange(req.params.id, range);
+    res.json({ success: true, ...data });
+  } catch (err) {
+    console.error('[analytics] visits error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Numeric lab-result trends for a patient (or dependent): ?patientId=
+app.get('/api/analytics/patient-trends', async (req, res) => {
+  try {
+    const { patientId } = req.query;
+    if (!patientId) {
+      return res.status(400).json({ success: false, error: 'patientId is required.' });
+    }
+    const data = await getPatientTrends(patientId);
+    res.json({ success: true, ...data });
+  } catch (err) {
+    console.error('[analytics] patient-trends error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ==========================================
+// ML FEATURES — risk score + wait-time model
+// ==========================================
+
+// Weighted clinical risk score (0–100) for a patient or dependent
+app.post('/api/ml/risk-score', async (req, res) => {
+  try {
+    const { patientId } = req.body;
+    if (!patientId) {
+      return res.status(400).json({ success: false, error: 'patientId is required.' });
+    }
+    const data = await computeRiskScore(patientId);
+    res.json({ success: true, ...data });
+  } catch (err) {
+    console.error('[ml] risk-score error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Predicted wait time for a NEW token in a department — linear regression on real consult durations + live queue depth
+app.post('/api/ml/wait-time', async (req, res) => {
+  try {
+    const { hospitalId, department } = req.body;
+    if (!hospitalId) {
+      return res.status(400).json({ success: false, error: 'hospitalId is required.' });
+    }
+    const data = await predictWaitTime(hospitalId, department);
+    res.json({ success: true, ...data });
+  } catch (err) {
+    console.error('[ml] wait-time error:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

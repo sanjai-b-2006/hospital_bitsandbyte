@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useHealth } from '../context/HealthContext';
-import { 
+import {
   ShieldAlert, 
   Activity, 
   User, 
@@ -14,7 +14,8 @@ import {
   ArrowRight,
   Database,
   Building2,
-  Stethoscope
+  Stethoscope,
+  TrendingUp
 } from 'lucide-react';
 import EmergencyCardModal from './EmergencyCardModal';
 import AddFamilyMemberModal from './AddFamilyMemberModal';
@@ -135,6 +136,26 @@ export default function Navbar({ activeTab, setActiveTab, onSwitchPortal }) {
                   }}
                 >
                   Medical Records & Calendar
+                </button>
+                <button
+                  onClick={() => setActiveTab('trends')}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: activeTab === 'trends' ? '#f0f9ff' : 'transparent',
+                    color: activeTab === 'trends' ? '#0284c7' : '#475569',
+                    fontWeight: activeTab === 'trends' ? 600 : 500,
+                    fontSize: '0.875rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <TrendingUp size={16} />
+                  Health Trends
                 </button>
                 <button
                   onClick={() => setActiveTab('access')}

@@ -167,3 +167,10 @@ CREATE INDEX IF NOT EXISTS idx_tokens_hospital ON patient_tokens(hospital_id);
 CREATE INDEX IF NOT EXISTS idx_tokens_status ON patient_tokens(status);
 CREATE INDEX IF NOT EXISTS idx_doctors_hospital ON doctors(hospital_id);
 
+-- 11. Analytics columns: consult start / completion timestamps
+--     (used by the ML wait-time model + analytics dashboards)
+ALTER TABLE patient_tokens ADD COLUMN IF NOT EXISTS started_at TIMESTAMP;
+ALTER TABLE patient_tokens ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP;
+CREATE INDEX IF NOT EXISTS idx_tokens_started ON patient_tokens(started_at);
+CREATE INDEX IF NOT EXISTS idx_tokens_completed ON patient_tokens(completed_at);
+

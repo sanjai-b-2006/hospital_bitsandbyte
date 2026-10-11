@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDoctor } from '../../context/DoctorContext';
+import { API_BASE_URL } from '../../config';
 import { 
   Ticket, 
   User, 
@@ -16,7 +17,9 @@ import {
   ChevronRight,
   ExternalLink,
   Calendar,
-  AlertCircle
+  AlertCircle,
+  BrainCircuit,
+  RefreshCw
 } from 'lucide-react';
 
 export default function DoctorHome({ onNavigateToPatient }) {
@@ -37,6 +40,49 @@ export default function DoctorHome({ onNavigateToPatient }) {
   const [newNotes, setNewNotes] = useState('');
   const [newRisk, setNewRisk] = useState('GREEN');
   const [submittingNote, setSubmittingNote] = useState(false);
+
+  // ML Clinical Risk Score state
+  const [risk, setRisk] = useState(null);
+  const [riskLoading, setRiskLoading] = useState(false);
+  const [riskError, setRiskError] = useState('');
+
+  const loadRiskScore = async (patientId) => {
+    if (!patientId) {
+      setRisk(null);
+      return;
+    }
+    setRiskLoading(true);
+    setRiskError('');
+    try {
+      const res = await fetch(`${API_BASE_URL}/ml/risk-score`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patientId }),
+      });
+      const text = await res.text();
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch (parseErr) {
+        throw new Error(`Server answered with non-JSON (HTTP ${res.status}).`);
+      }
+      if (json.success) {
+        setRisk(json);
+      } else {
+        setRiskError(json.error || 'Risk score failed.');
+      }
+    } catch (err) {
+      setRiskError(err.message);
+    } finally {
+      setRiskLoading(false);
+    }
+  };
+
+  // Recompute the score whenever the active patient changes
+  useEffect(() => {
+    loadRiskScore(activeToken?.patientId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeToken?.patientId]);
 
   const waitingTokens = queue.filter(t => t.status === 'Waiting');
   const inProgressTokens = queue.filter(t => t.status === 'In Consultation');
@@ -389,6 +435,102 @@ export default function DoctorHome({ onNavigateToPatient }) {
               }}>
                 {activeToken.riskLevel === 'RED' ? 'Detailed Review Required' : (activeToken.riskLevel === 'AMBER' ? 'Review Recommended' : 'Routine Check')}
               </div>
+            </div>
+
+            {/* ML Clinical Risk Score */}
+            <div className="card" style={{ padding: '20px 24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', gap: '10px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <BrainCircuit size={18} color="#4338ca" />
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
+                    ML Clinical Risk Score
+                  </h3>
+                  <span style={{ fontSize: '0.68rem', padding: '2px 8px', background: '#eef2ff', color: '#4338ca', borderRadius: '6px', fontWeight: 700 }}>
+                    AI TRIAGE
+                  </span>
+                </div>
+                <button
+                  onClick={() => loadRiskScore(activeToken?.patientId)}
+                  className="btn btn-secondary btn-sm"
+                  style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
+                >
+                  <RefreshCw size={13} /> Recompute
+                </button>
+              </div>
+
+              {riskLoading && !risk && (
+                <div style={{ textAlign: 'center', padding: '30px 0', color: '#64748b', fontSize: '0.85rem' }}>
+                  <BrainCircuit size={26} className="spin" style={{ margin: '0 auto 10px', color: '#4f46e5' }} />
+                  Computing risk from chart, allergies & labs…
+                </div>
+              )}
+
+              {riskError && (
+                <div style={{ padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', fontSize: '0.8rem', color: '#b91c1c' }}>
+                  ⚠️ {riskError}
+                </div>
+              )}
+
+              {risk && !riskLoading && (
+                <div style={{ display: 'flex', gap: '22px', flexWrap: 'wrap' }}>
+                  <div style={{ textAlign: 'center', flex: '0 0 auto' }}>
+                    <div style={{
+                      width: '110px', height: '110px', borderRadius: '50%',
+                      background: `conic-gradient(${risk.levelColor} ${risk.score * 3.6}deg, #e2e8f0 0deg)`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto'
+                    }}>
+                      <div style={{
+                        width: '86px', height: '86px', borderRadius: '50%', background: 'white',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'
+                      }}>
+                        <span style={{ fontSize: '1.6rem', fontWeight: 900, color: risk.levelColor }}>{risk.score}</span>
+                        <span style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 700 }}>/ 100</span>
+                      </div>
+                    </div>
+                    <div style={{ marginTop: '10px' }}>
+                      <span style={{
+                        padding: '4px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 800,
+                        background: risk.levelColor, color: 'white', letterSpacing: '0.03em'
+                      }}>
+                        {risk.level} RISK
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ flex: '1 1 380px', minWidth: '300px' }}>
+                    <div style={{ fontSize: '0.88rem', color: '#334155', fontWeight: 600, marginBottom: '12px' }}>
+                      {risk.summary}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {[
+                        { key: 'age', label: 'Age', cap: 15, note: risk.factors.age?.note },
+                        { key: 'allergies', label: 'Allergies', cap: 30 },
+                        { key: 'conditions', label: 'Critical conditions', cap: 24 },
+                        { key: 'records', label: 'Record risk (RED/AMBER)', cap: 56 },
+                        { key: 'labs', label: 'Abnormal lab values', cap: 15 },
+                        { key: 'medications', label: 'Risky medications', cap: 16 },
+                      ].map((f) => {
+                        const pts = risk.factors[f.key]?.points || 0;
+                        const pct = Math.min(100, Math.round((pts / f.cap) * 100));
+                        return (
+                          <div key={f.key}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontWeight: 700, color: '#475569', marginBottom: '3px' }}>
+                              <span>{f.label}</span>
+                              <span>{pts} / {f.cap}{f.note ? ` · ${f.note}` : ''}</span>
+                            </div>
+                            <div style={{ height: '6px', borderRadius: '4px', background: '#f1f5f9', overflow: 'hidden' }}>
+                              <div style={{ height: '100%', borderRadius: '4px', background: risk.levelColor, width: `${pct}%`, transition: 'width 0.4s ease' }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{ marginTop: '10px', fontSize: '0.7rem', color: '#94a3b8' }}>
+                      Weighted score from age, allergies, critical conditions, record risk levels, abnormal labs and risky medications.
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Longitudinal Medical Records of Active Patient */}

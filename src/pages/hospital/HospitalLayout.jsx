@@ -10,17 +10,19 @@ import {
   LogOut, 
   ChevronRight,
   RefreshCw,
-  Activity
+  Activity,
+  BarChart3
 } from 'lucide-react';
 import HospitalHome from './HospitalHome';
 import ManageHospitalUsers from './ManageHospitalUsers';
 import ManageDoctors from './ManageDoctors';
 import HospitalHistory from './HospitalHistory';
 import HospitalEmergency from './HospitalEmergency';
+import HospitalAnalytics from './HospitalAnalytics';
 
 export default function HospitalLayout() {
   const { hospital, logoutHospital, queue } = useHospital();
-  const [activeTab, setActiveTab] = useState('queue'); // 'queue', 'patients', 'doctors', 'history', 'emergency'
+  const [activeTab, setActiveTab] = useState('queue'); // 'queue', 'patients', 'doctors', 'history', 'analytics', 'emergency'
 
   const waitingCount = queue.filter(t => t.status === 'Waiting').length;
 
@@ -172,6 +174,26 @@ export default function HospitalLayout() {
               </button>
 
               <button
+                onClick={() => setActiveTab('analytics')}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: activeTab === 'analytics' ? '#ecfdf5' : 'transparent',
+                  color: activeTab === 'analytics' ? '#059669' : '#475569',
+                  fontWeight: activeTab === 'analytics' ? 700 : 500,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <BarChart3 size={16} />
+                <span>Analytics</span>
+              </button>
+
+              <button
                 onClick={() => setActiveTab('emergency')}
                 style={{
                   padding: '8px 14px',
@@ -213,6 +235,7 @@ export default function HospitalLayout() {
         {activeTab === 'patients' && <ManageHospitalUsers />}
         {activeTab === 'doctors' && <ManageDoctors />}
         {activeTab === 'history' && <HospitalHistory />}
+        {activeTab === 'analytics' && <HospitalAnalytics />}
         {activeTab === 'emergency' && <HospitalEmergency />}
       </main>
     </div>
